@@ -12,3 +12,17 @@ provides_hooks:
   - on_session_start
 provides_commands:
   - fabric
+# Prompted during `hermes plugins install` (skipped if already set).
+# Values land in ~/.hermes/.env. API key may be left blank for local models.
+requires_env:
+  - name: ZHC_FABRIC_DEFAULT_BASE_URL
+    description: >
+      OpenAI-compatible API base URL for committee votes
+      (e.g. http://127.0.0.1:11434/v1, http://127.0.0.1:8000/v1,
+      https://openrouter.ai/api/v1)
+  - name: ZHC_FABRIC_DEFAULT_MODEL
+    description: >
+      Model id your endpoint expects (e.g. llama3.2, qwopus-3.6, openai/gpt-4o-mini)
+  - name: ZHC_FABRIC_DEFAULT_API_KEY
+    description: API key if the endpoint needs one (leave empty for most local servers)
+    secret: true

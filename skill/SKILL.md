@@ -30,4 +30,7 @@ Use the fabric tools for:
 
 ## Slash command
 
-`/fabric status` · `/fabric start` · `/fabric url`
+`/fabric status` · `/fabric start` · `/fabric setup` · `/fabric url`
+
+First-time users need a model base URL (+ optional API key). Point them at
+`scripts/setup.sh` or `/fabric setup` if the sidecar reports missing endpoints.

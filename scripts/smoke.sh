@@ -3,9 +3,22 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export DEFAULT_BASE_URL="${DEFAULT_BASE_URL:-http://127.0.0.1:8000/v1}"
-export DEFAULT_MODEL="${DEFAULT_MODEL:-qwopus-3.6}"
+# Prefer already-configured setup; only then fall back to common local defaults.
+STATE_ENV="${HERMES_HOME:-$HOME/.hermes}/zhc-fabric/sidecar.env"
+if [[ -f "$STATE_ENV" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$STATE_ENV"
+  set +a
+fi
+export DEFAULT_BASE_URL="${DEFAULT_BASE_URL:-${ZHC_FABRIC_DEFAULT_BASE_URL:-}}"
+export DEFAULT_MODEL="${DEFAULT_MODEL:-${ZHC_FABRIC_DEFAULT_MODEL:-}}"
+export DEFAULT_API_KEY="${DEFAULT_API_KEY:-${ZHC_FABRIC_DEFAULT_API_KEY:-}}"
 export ZHC_FABRIC_URL="${ZHC_FABRIC_URL:-http://127.0.0.1:7733}"
+if [[ -z "$DEFAULT_BASE_URL" || -z "$DEFAULT_MODEL" ]]; then
+  echo "error: no model URL/id configured. Run: $ROOT/scripts/setup.sh" >&2
+  exit 1
+fi
 
 echo "== start sidecar =="
 bash "$ROOT/scripts/install-sidecar.sh" start

@@ -14,36 +14,65 @@ Hermes stays the agent shell. This repo ships a **thin plugin** + an **independe
 
 ---
 
-## Quick start (this machine)
+## Install (anyone with Hermes)
 
 ```bash
-# 1. Install plugin into Hermes (symlink for dev)
-ln -sfn ~/projects/zhc-fabric ~/.hermes/plugins/zhc-fabric
+# From Git once published:
+# hermes plugins install YourOrg/zhc-fabric --enable
 
-# 2. Enable in config (or: hermes plugins enable zhc-fabric)
-#    plugins.enabled must include: zhc-fabric
-
-# 3. Start sidecar (defaults: model endpoint :8000, model qwopus-3.6)
-~/projects/zhc-fabric/scripts/install-sidecar.sh start
-
-# 4. Smoke test
-~/projects/zhc-fabric/scripts/smoke.sh
-
-# 5. Restart Hermes gateway so tools load
-systemctl --user restart hermes-gateway   # if applicable
+# Local / dev:
+ln -sfn /path/to/zhc-fabric ~/.hermes/plugins/zhc-fabric
+hermes plugins enable zhc-fabric
 ```
 
-In chat: `/fabric status` or ask the agent to call `fabric_consensus`.
+During `hermes plugins install`, Hermes **prompts** for:
 
-### Env (optional)
+| Variable | What to enter |
+|----------|----------------|
+| `ZHC_FABRIC_DEFAULT_BASE_URL` | OpenAI-compatible base, e.g. `http://127.0.0.1:11434/v1` |
+| `ZHC_FABRIC_DEFAULT_MODEL` | Model id, e.g. `llama3.2` |
+| `ZHC_FABRIC_DEFAULT_API_KEY` | Optional — blank for most local servers |
+
+Saved to `~/.hermes/.env` (skip empty if you prefer to configure later).
+
+Then run the setup wizard (writes a local env file + starts the sidecar):
 
 ```bash
-export ZHC_FABRIC_URL=http://127.0.0.1:7733
-export DEFAULT_BASE_URL=http://127.0.0.1:8000/v1
-export DEFAULT_MODEL=qwopus-3.6
-export MAX_INFLIGHT_COMPLETIONS=2
-export ZHC_FABRIC_AUTO_START=1   # plugin may start sidecar on load
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh
 ```
+
+Smoke + chat:
+
+```bash
+~/.hermes/plugins/zhc-fabric/scripts/smoke.sh
+hermes gateway restart   # if gateway was already running
+```
+
+In chat: `/fabric status` · ask for a committee · tool `fabric_consensus`.
+
+### Reconfigure
+
+```bash
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh
+# or edit:  ~/.hermes/zhc-fabric/sidecar.env
+```
+
+### Env reference
+
+| Variable | Meaning |
+|----------|---------|
+| `ZHC_FABRIC_DEFAULT_BASE_URL` | Inference `/v1` base (install prompt) |
+| `ZHC_FABRIC_DEFAULT_MODEL` | Model id |
+| `ZHC_FABRIC_DEFAULT_API_KEY` | Optional API key |
+| `DEFAULT_BASE_URL` / `DEFAULT_MODEL` / `DEFAULT_API_KEY` | Same, classic names (also work) |
+| `ZHC_FABRIC_URL` | Plugin → sidecar (default `http://127.0.0.1:7733`) |
+| `ZHC_FABRIC_AUTO_START` | Plugin may start sidecar on load (`1`/`true`) |
+| `MAX_INFLIGHT_COMPLETIONS` | Concurrent outbound LLM calls (default `2`) |
+
+Config files:
+
+- `~/.hermes/zhc-fabric/sidecar.env` — written by `setup.sh` (mode 600)
+- `~/.hermes/zhc-fabric/config.json` — non-secret summary
 
 ### Hermes config
 
@@ -63,7 +92,7 @@ plugins:
 | `fabric_consensus` | N parallel views + reduce (`majority` / `love_eq` / `unanimous_soft`) |
 | `fabric_fanout` | N views, no reduce |
 
-Slash: `/fabric status` · `/fabric start` · `/fabric url`
+Slash: `/fabric status` · `/fabric start` · `/fabric setup` · `/fabric url`
 
 ---
 
@@ -74,7 +103,7 @@ Slash: `/fabric status` · `/fabric start` · `/fabric url`
   → Hermes
       → zhc-fabric plugin
           → sidecar :7733
-              → OpenAI-compatible models
+              → OpenAI-compatible models (URL/key from setup)
 ```
 
 Docs:
@@ -92,12 +121,12 @@ Docs:
 
 ```text
 zhc-fabric/
-├── plugin.yaml / __init__.py / client.py / config.py / schemas.py
+├── plugin.yaml / after-install.md / __init__.py / client.py / config.py
 ├── skill/SKILL.md
-├── scripts/install-sidecar.sh | healthcheck.sh | smoke.sh
+├── scripts/setup.sh | install-sidecar.sh | healthcheck.sh | smoke.sh
 ├── sidecar/stub/server.py
 ├── sidecar/docker-compose.yml
-├── tests/test_client.py
+├── tests/
 └── docs/
 ```
 

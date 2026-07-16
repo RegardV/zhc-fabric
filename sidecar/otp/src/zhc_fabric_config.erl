@@ -9,11 +9,12 @@ host() -> str_env("FABRIC_HOST", "127.0.0.1").
 port() -> int_env("FABRIC_PORT", 7733).
 
 default_base_url() ->
-    string:trim(bin_env("DEFAULT_BASE_URL"), trailing, "/").
+    string:trim(first_env(["DEFAULT_BASE_URL", "ZHC_FABRIC_DEFAULT_BASE_URL"]),
+                trailing, "/").
 
-default_model() -> bin_env("DEFAULT_MODEL").
+default_model() -> first_env(["DEFAULT_MODEL", "ZHC_FABRIC_DEFAULT_MODEL"]).
 
-default_api_key() -> bin_env("DEFAULT_API_KEY").
+default_api_key() -> first_env(["DEFAULT_API_KEY", "ZHC_FABRIC_DEFAULT_API_KEY"]).
 
 max_inflight() -> max(1, int_env("MAX_INFLIGHT_COMPLETIONS", 2)).
 
@@ -24,6 +25,19 @@ max_prompt_chars() -> int_env("FABRIC_MAX_PROMPT_CHARS", 100000).
 love_eq_rubric() -> bin_env("FABRIC_LOVE_EQ_RUBRIC").
 
 %% internal
+
+%% First non-empty env among Names (list of strings); <<>> if all missing.
+first_env(Names) ->
+    first_env(Names, "").
+
+first_env([], Acc) ->
+    unicode:characters_to_binary(Acc);
+first_env([Name | Rest], Acc) ->
+    case os:getenv(Name) of
+        false -> first_env(Rest, Acc);
+        "" -> first_env(Rest, Acc);
+        V -> unicode:characters_to_binary(V)
+    end.
 
 str_env(Name, Default) ->
     case os:getenv(Name) of

@@ -166,15 +166,26 @@ def register(ctx: Any) -> None:
                 except Exception as e:  # noqa: BLE001
                     return f"start failed: {e}"
             return "install-sidecar.sh not found"
+        if args[0] == "setup":
+            script = PLUGIN_ROOT / "scripts" / "setup.sh"
+            if not script.is_file():
+                return "setup.sh not found — run scripts/setup.sh from a terminal"
+            # Interactive TTY required; from chat we only print the path.
+            return (
+                "Interactive setup needs a terminal:\n"
+                f"  bash {script}\n"
+                "It asks for base URL, model id, and optional API key, "
+                "then starts the sidecar."
+            )
         if args[0] == "url":
             return fabric_url()
-        return "usage: /fabric [status|start|url]"
+        return "usage: /fabric [status|start|setup|url]"
 
     try:
         ctx.register_command(
             "fabric",
             handle_command,
-            description="ZHC fabric status/start",
+            description="ZHC fabric status/start/setup",
         )
     except Exception:  # noqa: BLE001
         logger.warning("zhc-fabric: register_command failed", exc_info=True)

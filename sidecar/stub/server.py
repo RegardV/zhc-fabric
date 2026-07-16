@@ -25,9 +25,20 @@ START_TS = time.time()
 
 HOST = os.environ.get("FABRIC_HOST", "127.0.0.1")
 PORT = int(os.environ.get("FABRIC_PORT", "7733"))
-DEFAULT_BASE_URL = os.environ.get("DEFAULT_BASE_URL", "").rstrip("/")
-DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "")
-DEFAULT_API_KEY = os.environ.get("DEFAULT_API_KEY", "")
+# Prefer classic DEFAULT_*; fall back to install/setup names (ZHC_FABRIC_DEFAULT_*).
+DEFAULT_BASE_URL = (
+    os.environ.get("DEFAULT_BASE_URL")
+    or os.environ.get("ZHC_FABRIC_DEFAULT_BASE_URL")
+    or ""
+).rstrip("/")
+DEFAULT_MODEL = (
+    os.environ.get("DEFAULT_MODEL") or os.environ.get("ZHC_FABRIC_DEFAULT_MODEL") or ""
+)
+DEFAULT_API_KEY = (
+    os.environ.get("DEFAULT_API_KEY")
+    or os.environ.get("ZHC_FABRIC_DEFAULT_API_KEY")
+    or ""
+)
 MAX_INFLIGHT = max(1, int(os.environ.get("MAX_INFLIGHT_COMPLETIONS", "2")))
 MAX_N = max(1, min(16, int(os.environ.get("FABRIC_MAX_N", "8"))))
 MAX_PROMPT_CHARS = int(os.environ.get("FABRIC_MAX_PROMPT_CHARS", "100000"))
