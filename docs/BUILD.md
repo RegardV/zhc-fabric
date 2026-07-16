@@ -293,12 +293,12 @@ Errors always JSON with `ok: false` and `error` string (reachable from plugin to
 
 ### Phase 3 — Erlang/OTP fabric
 
-- [ ] Rebar3 (or Mix) app: HTTP API preserved
-- [ ] One process per in-flight consensus job
-- [ ] Actor processes for proposer/critic/aggregator
-- [ ] Supervision tree; crash of one job does not kill node
-- [ ] Replace Python stub behind same port/API
-- [ ] Config for `max_inflight_completions`
+- [x] OTP app (erlc-only build, zero hex deps): HTTP API preserved
+- [x] One process per in-flight consensus job (`simple_one_for_one` job supervisor)
+- [x] Actor processes for proposer/critic votes; policy/aggregation module
+- [x] Supervision tree; crash of one job does not kill node
+- [x] Replace Python stub behind same port/API (verified: `FABRIC_TEST_URL` contract test passes vs Docker OTP sidecar)
+- [x] Config for `max_inflight_completions` (lease gen_server)
 
 **Exit:** Same plugin, no tool schema changes; only sidecar binary/image changes.
 

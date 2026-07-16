@@ -1,0 +1,9 @@
+{application, zhc_fabric,
+ [{description, "zhc-fabric OTP sidecar (Phase 3)"},
+  {vsn, "0.1.0"},
+  {registered, [zhc_fabric_sup, zhc_fabric_lease, zhc_fabric_job_sup]},
+  {applications, [kernel, stdlib, inets, ssl]},
+  {mod, {zhc_fabric_app, []}},
+  {modules, [zhc_fabric_app, zhc_fabric_sup, zhc_fabric_config,
+             zhc_fabric_lease, zhc_fabric_http, zhc_fabric_job_sup,
+             zhc_fabric_job, zhc_fabric_policy, zhc_fabric_client]}]}.
