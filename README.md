@@ -15,7 +15,7 @@ Run a lightweight “committee” of parallel LLM views (propose / critique / vo
 | **Sidecar** | **Erlang/OTP** fabric in **Docker** | `http://127.0.0.1:7733` |
 | **Your models** | Any OpenAI-compatible `/v1/chat/completions` | Ollama, llama.cpp, OpenRouter, cloud, … |
 
-**Repo:** https://github.com/RegardV/zhc-fabric · **License:** MIT · **v0.1.0** · RealAndWorks garage lab
+**Repo:** https://github.com/RegardV/zhc-fabric · **License:** MIT · **v0.1.0** · [![Real And Works garage lab](www.realandworks.com)]]
 
 ### Quick start
 
