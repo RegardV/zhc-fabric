@@ -7,7 +7,7 @@ Run a lightweight “committee” of parallel LLM views (propose / critique / vo
 | Layer | What it is | Default |
 |-------|------------|---------|
 | **Hermes plugin** | Tools, `/fabric` command, skill | `~/.hermes/plugins/zhc-fabric` |
-| **Sidecar** | Independent process on HTTP | `http://127.0.0.1:7733` |
+| **Sidecar (primary)** | **Erlang/OTP** fabric in **Docker** | `http://127.0.0.1:7733` |
 | **Your models** | Any OpenAI-compatible `/v1/chat/completions` | Ollama, llama.cpp, OpenRouter, etc. |
 
 **Repo:** https://github.com/RegardV/zhc-fabric  
@@ -43,29 +43,26 @@ Run a lightweight “committee” of parallel LLM views (propose / critique / vo
 
 **zhc-fabric** is two pieces that ship in one repo:
 
-1. A **Hermes plugin** (thin Python client) that registers:
-   - Tools: `fabric_status`, `fabric_consensus`, `fabric_fanout`
-   - Slash command: `/fabric`
-   - A skill teaching the agent *when* to call the fabric
-2. A **sidecar process** that owns the real work:
-   - Fan-out N short completions in parallel
-   - Cap concurrency so one GPU/API is not stampeded
-   - Reduce votes with a policy (`majority`, `love_eq`, `unanimous_soft`)
-   - Expose a stable HTTP JSON API on port **7733** by default
+1. A **Hermes plugin** (thin Python client) that registers tools, `/fabric`, and a skill.
+2. An **Erlang/OTP sidecar** — the real product — run as a **Docker image**:
+   - Actors + supervision for parallel propose / critique / vote
+   - Global lease so one GPU/API is not stampeded
+   - Reduce policies: `majority`, `love_eq`, `unanimous_soft`
+   - Stable HTTP JSON API on port **7733**
 
-Hermes remains the chat/agent shell. The fabric is an optional committee under it. If the sidecar is down, Hermes still works; fabric tools fail cleanly (`success: false`).
+**Docker is required. Installing Erlang on the host is not.** The image is built from `erlang:27-alpine`; OTP stays inside the container.
+
+Hermes remains the chat/agent shell. If the sidecar is down, Hermes still works; fabric tools fail cleanly (`success: false`).
 
 ```text
 You (CLI / Telegram / Desktop)
         │
         ▼
-     Hermes
+     Hermes  (plugin only — thin HTTP client)
         │  fabric_* tools  ·  /fabric
         ▼
-  zhc-fabric plugin  ──HTTP──►  sidecar :7733
-                                    │
-                                    ▼
-                         Your OpenAI-compatible model(s)
+  Docker container  zhc-fabric  (Erlang/OTP)
+        :7733  ──chat.completions──►  Your model(s)
 ```
 
 ---
@@ -80,7 +77,7 @@ Local multi-agent stacks (Hermes, similar agents) can already talk to models and
 
 **Inference speed** (tokens/sec) is a different problem—llama.cpp, Ollama, vLLM already handle that.
 
-zhc-fabric exists to make **committee-style orchestration** a portable sidecar: install once on any Hermes, point at any OpenAI-compatible endpoint, keep Hermes thin and fail-open.
+zhc-fabric exists to put that committee in **Erlang/OTP** (actors, supervision, leases) behind a boring HTTP API, delivered as a **Docker image** so anyone with Docker can run it—without becoming an Erlang packager. Hermes stays thin and fail-open.
 
 ---
 
@@ -113,36 +110,59 @@ zhc-fabric exists to make **committee-style orchestration** a portable sidecar: 
 
 ## Requirements
 
-| Need | Notes |
-|------|--------|
-| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | With general plugins enabled |
-| Python 3 | For the default Python sidecar |
-| `curl` | Health checks / smoke |
-| An OpenAI-compatible API | Must serve `POST …/v1/chat/completions` |
-| Optional: Docker | For the Erlang/OTP sidecar image |
-| Optional: `pytest` | Offline test suite |
+### You need these (host)
 
-No Erlang install is required for the default path.
+| Need | Why |
+|------|-----|
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Loads the plugin |
+| **Docker** (Engine or Desktop) | **Builds and runs the OTP fabric** — this is the product path |
+| `curl` | Health / smoke scripts |
+| An OpenAI-compatible API | Sidecar calls `POST …/v1/chat/completions` |
+| Python 3 | Hermes plugin only (stdlib HTTP client); **not** the fabric runtime |
+
+### You do **not** need these
+
+| Not required | Why |
+|--------------|-----|
+| **Erlang / OTP on the host** | Shipped **inside** the Docker image (`erlang:27-alpine` + `erlc` at build) |
+| rebar3 / hex / Elixir | Zero host toolchain |
+| GPU on the fabric host | Models can be remote; fabric is orchestration |
+
+If install “hits a wall,” it should be **install Docker**, never **install Erlang**.
+
+### Optional
+
+| Optional | Why |
+|----------|-----|
+| `pytest` | Offline contract suite (`scripts/test.sh`) |
+| `FABRIC_RUNTIME=python` | Dev-only Python stub fallback — **not** the product path |
 
 ---
 
 ## Install
 
-### Recommended: Hermes plugin install
+End-to-end product path:
 
 ```bash
+# 0. Docker must be installed and running
+docker info
+
+# 1. Plugin
 hermes plugins install RegardV/zhc-fabric --enable
+
+# 2. Model URL / key (wizard or manual — see below)
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh --wizard
+
+# 3. Start OTP sidecar (docker compose build + run)
+~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh start
+~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh status
+
+# 4. Smoke + Hermes
+~/.hermes/plugins/zhc-fabric/scripts/smoke.sh
+hermes gateway restart   # if gateway was already running
 ```
 
-That clones into `~/.hermes/plugins/zhc-fabric` (name from `plugin.yaml`) and can enable it in config.
-
-Install **does not** force URL/key prompts. After install, Hermes may show `after-install.md`. Then configure and start the sidecar (next section).
-
-If the gateway was already running:
-
-```bash
-hermes gateway restart
-```
+That clones into `~/.hermes/plugins/zhc-fabric`. Install does **not** force URL/key prompts; `setup.sh` handles configuration.
 
 ### Dev / local symlink
 
@@ -229,8 +249,10 @@ ZHC_FABRIC_DEFAULT_API_KEY=          # leave empty for most local servers
 
 ```bash
 chmod 600 ~/.hermes/zhc-fabric/sidecar.env
-~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh start
+~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh start   # Docker OTP
 ```
+
+**Localhost models + Docker:** if you set `http://127.0.0.1:…/v1` in `sidecar.env`, `install-sidecar.sh` rewrites it to `host.docker.internal` for the container so the model on the host is reachable.
 
 ### Reconfigure later
 
@@ -246,27 +268,33 @@ From Hermes chat: `/fabric setup` prints the same paths (editing still needs a t
 
 ## Run
 
-### Start / stop / status / logs
+### Start / stop / status / logs (OTP via Docker)
 
 ```bash
 PLUGIN=~/.hermes/plugins/zhc-fabric
 
-$PLUGIN/scripts/install-sidecar.sh start
-$PLUGIN/scripts/install-sidecar.sh status
+$PLUGIN/scripts/install-sidecar.sh start     # docker compose build + up
+$PLUGIN/scripts/install-sidecar.sh status    # should show runtime=otp / docker
 $PLUGIN/scripts/install-sidecar.sh logs
 $PLUGIN/scripts/install-sidecar.sh stop
 $PLUGIN/scripts/install-sidecar.sh restart
 ```
 
+What `start` does:
+
+1. Checks **Docker** is installed and the daemon is up  
+2. Loads `~/.hermes/zhc-fabric/sidecar.env`  
+3. `docker compose -f sidecar/docker-compose.yml up -d --build`  
+4. Image builds Erlang sources with `erlc` **inside** the container  
+5. Waits for `GET http://127.0.0.1:7733/health`
+
 Quick health:
 
 ```bash
 $PLUGIN/scripts/healthcheck.sh
-# or
 curl -sS http://127.0.0.1:7733/health | jq .
+# expect something like: "runtime" mentioning otp, "ok": true
 ```
-
-Healthy response includes `"ok": true`, `"api": "v1"`, runtime name, inflight stats.
 
 ### Auto-start from the plugin (optional)
 
@@ -274,22 +302,27 @@ Healthy response includes `"ok": true`, `"api": "v1"`, runtime name, inflight st
 export ZHC_FABRIC_AUTO_START=1
 ```
 
-When set, `register()` best-effort starts the sidecar if health fails. Prefer explicit `install-sidecar.sh start` for servers.
+When set, `register()` best-effort runs `install-sidecar.sh start` (still needs Docker). Prefer explicit start on servers.
 
-### Docker / OTP sidecar (optional)
-
-Default path is the **Python** stub. For the Erlang/OTP implementation:
+### Direct Docker (same image)
 
 ```bash
 cd ~/.hermes/plugins/zhc-fabric   # or your clone
-docker build -t zhc-fabric-otp sidecar/otp
-docker run --rm -p 7733:7733 \
-  -e DEFAULT_BASE_URL=http://host.docker.internal:11434/v1 \
-  -e DEFAULT_MODEL=llama3.2 \
-  zhc-fabric-otp
+cd sidecar
+export DEFAULT_BASE_URL=http://host.docker.internal:11434/v1
+export DEFAULT_MODEL=llama3.2
+docker compose up -d --build
 ```
 
-See [sidecar/otp/README.md](./sidecar/otp/README.md) and [sidecar/docker-compose.yml](./sidecar/docker-compose.yml).
+Details: [sidecar/otp/README.md](./sidecar/otp/README.md).
+
+### Dev-only Python stub (not the product path)
+
+```bash
+FABRIC_RUNTIME=python ./scripts/install-sidecar.sh start
+```
+
+Use for quick offline experiments without Docker. **Production / “the premise” is Docker + OTP.**
 
 ---
 
@@ -388,7 +421,7 @@ curl -sS http://127.0.0.1:7733/v1/metrics | jq .
 ./scripts/install-sidecar.sh start
 ```
 
-### OTP contract (optional)
+### OTP contract (Docker image)
 
 ```bash
 docker build -t zhc-fabric-otp sidecar/otp
@@ -416,12 +449,12 @@ docker rm -f fabric-otp
 | `ZHC_FABRIC_URL` | `http://127.0.0.1:7733` | Plugin → sidecar |
 | `ZHC_FABRIC_TIMEOUT_S` | `120` | Plugin client timeout |
 | `ZHC_FABRIC_AUTO_START` | off | Plugin may spawn sidecar |
-| `FABRIC_HOST` / `FABRIC_PORT` | `127.0.0.1` / `7733` | Sidecar bind |
+| `FABRIC_HOST` / `FABRIC_PORT` | `127.0.0.1` / `7733` | Host port published by Docker |
 | `MAX_INFLIGHT_COMPLETIONS` | `2` | Global concurrent LLM calls |
 | `FABRIC_MAX_N` | `8` | Max votes per job |
 | `FABRIC_LOVE_EQ_RUBRIC` | built-in | Override love_eq scorer instructions |
 | `HERMES_HOME` | `~/.hermes` | Hermes state root |
-| `FABRIC_USE_DOCKER` | `0` | Prefer compose path in install script |
+| `FABRIC_RUNTIME` | `otp` | `otp` = Docker Erlang (default); `python` = stub fallback |
 
 ### Files on disk
 
@@ -450,9 +483,9 @@ docker rm -f fabric-otp
                      │ HTTP JSON :7733
                      ▼
 ┌─────────────────────────────────────────┐
-│  Sidecar (Python stub or OTP)           │
-│  · lease / max inflight                 │
-│  · jobs: fan-out votes → reduce policy  │
+│  Docker: zhc-fabric (Erlang/OTP 27)     │
+│  · lease gen_server / max inflight      │
+│  · supervised jobs: fan-out → reduce    │
 │  · /health /v1/consensus /v1/fanout     │
 │  · /v1/metrics                          │
 └────────────────────┬────────────────────┘
@@ -465,8 +498,8 @@ docker rm -f fabric-otp
 
 | Runtime | Path | Role |
 |---------|------|------|
-| Python stub | `sidecar/stub/server.py` | Default, easy debug |
-| Erlang/OTP | `sidecar/otp/` | Same API; supervision-oriented |
+| **Erlang/OTP + Docker** | `sidecar/otp/` + compose | **Primary product** |
+| Python stub | `sidecar/stub/server.py` | Tests / `FABRIC_RUNTIME=python` only |
 
 ---
 
@@ -489,13 +522,15 @@ Errors prefer HTTP 200 with `"ok": false` and an `error` string so clients alway
 
 | Symptom | What to try |
 |---------|-------------|
-| `fabric unreachable` / connection refused | `install-sidecar.sh start`; check `status` and `logs` |
-| `no endpoints configured` | Run `setup.sh --wizard` or set URL+model in `sidecar.env` |
-| Model 401 / unauthorized | Set `ZHC_FABRIC_DEFAULT_API_KEY` / `DEFAULT_API_KEY` |
-| Empty or wrong model id | Match `/v1/models` on your server |
-| Tools missing in Hermes | `plugins.enabled` includes `zhc-fabric`; `hermes gateway restart` / new session |
-| Port 7733 in use | `FABRIC_PORT=7740` and matching `ZHC_FABRIC_URL` |
-| Slow / timeouts | Raise `timeout_s` / `ZHC_FABRIC_TIMEOUT_S`; lower `n`; check model load |
+| `Docker is required…` | Install/start Docker; **do not** install system Erlang |
+| `daemon is not reachable` | Start Docker Desktop / `systemctl start docker`; check group perms |
+| `fabric unreachable` | `install-sidecar.sh start`; `status`; `logs` |
+| `no endpoints configured` | `setup.sh --wizard` or edit `sidecar.env` |
+| Model connection refused from fabric | Use host model + rewrite: script maps `127.0.0.1` → `host.docker.internal` |
+| Model 401 | Set API key in `sidecar.env` |
+| Tools missing in Hermes | Enable plugin; `hermes gateway restart` |
+| Port 7733 in use | Free port or set `FABRIC_PORT` + `ZHC_FABRIC_URL` |
+| Slow / timeouts | Raise timeouts; lower `n`; check model |
 | GPU overload | Lower `MAX_INFLIGHT_COMPLETIONS` and/or `n` |
 
 ---
@@ -514,7 +549,8 @@ Errors prefer HTTP 200 with `"ok": false` and an `error` string so clients alway
 
 **Shipped (Phase 4a cap)**
 
-- Hermes plugin + Python sidecar + OTP sidecar  
+- Hermes plugin + **Docker Erlang/OTP sidecar (primary)**  
+- Python stub only as test/dev fallback  
 - Policies: `majority`, `love_eq` (real rubric pass), `unanimous_soft`  
 - Metrics, leases, offline contract tests, setup wizard/manual  
 
@@ -535,8 +571,7 @@ Honest positioning: speedup is **orchestration / multi-view fluidity**, not magi
 
 ```bash
 ~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh stop
-# if you used Docker compose / OTP container:
-# docker rm -f fabric-otp   # if you named one
+# removes compose stack (container zhc-fabric)
 ```
 
 ### 2. Disable and remove the plugin
@@ -590,14 +625,15 @@ zhc-fabric/
 ├── client.py / config.py / schemas.py
 ├── sidecar.env.example
 ├── skill/SKILL.md
-├── scripts/          setup, install-sidecar, smoke, test, healthcheck
-├── sidecar/stub/     Python server
-├── sidecar/otp/      Erlang/OTP server + Dockerfile
-├── tests/            pytest contract + client
+├── scripts/          setup, install-sidecar (Docker OTP), smoke, test
+├── sidecar/otp/      **Primary** Erlang/OTP + Dockerfile
+├── sidecar/docker-compose.yml
+├── sidecar/stub/     Python fallback / contract-test helper
+├── tests/            pytest (mock OpenAI; can target OTP via FABRIC_TEST_URL)
 └── docs/             BUILD, API, plugin contract, portability
 ```
 
-Contributions: keep the plugin **fail-open**, **stdlib-only** client if possible, and preserve the `/v1` JSON contract when changing the sidecar.
+Contributions: keep the plugin **fail-open**, Docker OTP as default install path, and preserve the `/v1` JSON contract.
 
 ---
 

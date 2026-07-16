@@ -1,18 +1,27 @@
+# Primary sidecar: Erlang/OTP fabric (Docker ships Erlang — no host install).
+# From repo root or via scripts/install-sidecar.sh:
+#   docker compose -f sidecar/docker-compose.yml up -d --build
 services:
   zhc-fabric:
     build:
-      context: ..
-      dockerfile: sidecar/Dockerfile
+      context: ./otp
+      dockerfile: Dockerfile
+    image: zhc-fabric-otp:local
+    container_name: zhc-fabric
     ports:
-      - "7733:7733"
+      - "${FABRIC_PORT:-7733}:7733"
     environment:
       FABRIC_HOST: "0.0.0.0"
       FABRIC_PORT: "7733"
-      # host.docker.internal works on Docker Desktop; on Linux add extra_hosts
-      DEFAULT_BASE_URL: "${DEFAULT_BASE_URL:-http://host.docker.internal:8000/v1}"
-      DEFAULT_MODEL: "${DEFAULT_MODEL:-qwopus-3.6}"
+      # Prefer host.docker.internal so container can reach models on the host
+      DEFAULT_BASE_URL: "${DEFAULT_BASE_URL:-http://host.docker.internal:11434/v1}"
+      DEFAULT_MODEL: "${DEFAULT_MODEL:-llama3.2}"
       DEFAULT_API_KEY: "${DEFAULT_API_KEY:-}"
+      ZHC_FABRIC_DEFAULT_BASE_URL: "${ZHC_FABRIC_DEFAULT_BASE_URL:-${DEFAULT_BASE_URL:-}}"
+      ZHC_FABRIC_DEFAULT_MODEL: "${ZHC_FABRIC_DEFAULT_MODEL:-${DEFAULT_MODEL:-}}"
+      ZHC_FABRIC_DEFAULT_API_KEY: "${ZHC_FABRIC_DEFAULT_API_KEY:-${DEFAULT_API_KEY:-}}"
       MAX_INFLIGHT_COMPLETIONS: "${MAX_INFLIGHT_COMPLETIONS:-2}"
+      FABRIC_LOVE_EQ_RUBRIC: "${FABRIC_LOVE_EQ_RUBRIC:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

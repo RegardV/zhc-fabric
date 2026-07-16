@@ -1,19 +1,28 @@
 # Sidecar runtimes
 
-| Path | Status |
-|------|--------|
-| `stub/server.py` | **MVP** — Python stdlib HTTP, OpenAI-compatible fan-out |
-| OTP / Erlang | Planned Phase 3 — same HTTP API on port 7733 |
-| Docker | `docker compose up` from this directory |
+| Path | Role |
+|------|------|
+| **`otp/` + Docker** | **Primary product runtime** — Erlang/OTP fabric |
+| `stub/server.py` | Dev / test fallback only (`FABRIC_RUNTIME=python`) |
 
-## Native start
+## Requirements (product path)
+
+| Host need | Why |
+|-----------|-----|
+| **Docker** | Builds and runs the OTP image |
+| **Not** Erlang | Image is `FROM erlang:27-alpine`; OTP stays in the container |
+| Inference URL | OpenAI-compatible model reachable from the container (often via `host.docker.internal`) |
+
+## Start (recommended)
 
 ```bash
-export DEFAULT_BASE_URL=http://127.0.0.1:8000/v1
-export DEFAULT_MODEL=qwopus-3.6
+../scripts/setup.sh --wizard          # or --manual
 ../scripts/install-sidecar.sh start
+../scripts/install-sidecar.sh status
 ```
+
+Compose is `docker-compose.yml` in this directory (OTP Dockerfile).
 
 ## Env
 
-See `docs/BUILD.md` §9 and `docs/SIDECAR-API.md`.
+See root [README.md](../README.md) and [docs/SIDECAR-API.md](../docs/SIDECAR-API.md).

@@ -86,12 +86,17 @@ Examples
     ZHC_FABRIC_DEFAULT_API_KEY=sk-or-…
 
 ────────────────────────────────────────────────────────────
-After editing
+After editing — start the OTP fabric (Docker)
 ────────────────────────────────────────────────────────────
+  Requires Docker. Does NOT require host Erlang.
+
   $ROOT/scripts/install-sidecar.sh start
+  $ROOT/scripts/install-sidecar.sh status
   $ROOT/scripts/smoke.sh
   hermes gateway restart    # if Hermes was already running
   # In chat: /fabric status
+
+  If start says Docker is required: install Docker Engine/Desktop only.
 
 Re-run interactive setup anytime:
   $0 --wizard
@@ -232,7 +237,13 @@ print(f"Synced ZHC_FABRIC_DEFAULT_* into {env_path}")
 PY
   fi
 
-  echo "Starting sidecar..."
+  echo "Starting OTP sidecar via Docker (Erlang stays inside the image)..."
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "warning: Docker not found. Install Docker, then run:" >&2
+    echo "  $ROOT/scripts/install-sidecar.sh start" >&2
+    echo "You do not need to install Erlang on the host." >&2
+    return 0
+  fi
   bash "$ROOT/scripts/install-sidecar.sh" restart
   echo
   echo "Done. In Hermes: /fabric status"
