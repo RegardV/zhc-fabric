@@ -48,12 +48,12 @@ In practice the **orchestration layer** becomes the ceiling:
 4. `/fabric` slash command and `hermes fabric`-style CLI via plugin.
 5. Metrics endpoint for latency and actor counts.
 
-### 2.3 Later (v2+)
+### 2.3 Later (v2+) — not in current cap
 
-1. Multi-node Erlang distribution across LAN hosts.
+1. Multi-node Erlang distribution across LAN hosts (**explicitly deferred**).
 2. Hot code reload of reduce policies.
 3. Kanban card workers as fabric jobs.
-4. Integration with ZHC joule ledger / Love Equation scoring as first-class policy.
+4. Deeper ZHC joule ledger / Kanban hooks (Love Equation scoring as a reduce policy is already in Phase 4a).
 
 ### 2.4 Non-goals
 
@@ -302,14 +302,19 @@ Errors always JSON with `ok: false` and `error` string (reachable from plugin to
 
 **Exit:** Same plugin, no tool schema changes; only sidecar binary/image changes.
 
-### Phase 4 — Distributed + Love Equation
+### Phase 4a — Love Equation + metrics  ✅ shipped (cap)
 
-- [ ] Multi-node connect (LAN) — needs a second machine to meet the exit criterion
 - [x] `love_eq` policy with configurable rubric (LLM scorer pass in both runtimes; request `rubric` > `FABRIC_LOVE_EQ_RUBRIC` > default; heuristic fallback on scorer failure)
 - [x] Optional metrics export (`/v1/metrics` JSON counters in both runtimes)
-- [ ] ZHC Kanban / joule hooks (out of band docs)
 
-**Exit:** Two machines run one fabric; consensus spans nodes.
+**Exit (met):** Same plugin; real `love_eq` reduce on both stub and OTP; live-verified on this host.
+
+### Phase 4b+ — deferred (not in this cap)
+
+- [ ] Multi-node connect (LAN) — **dropped for now**; stays a v2+ idea under §2.3
+- [ ] ZHC Kanban / joule hooks (out of band; needs workspace conventions)
+
+**Cap decision (2026-07-16):** Project is complete at Phase 4a. Do not start multi-node distribution until deliberately reopened.
 
 ---
 
@@ -446,13 +451,18 @@ Marketing claims must stay honest:
 
 ---
 
-## 15. Immediate next actions
+## 15. Status at cap (Phase 4a)
 
-1. Implement Phase 0 plugin stubs + `client.py` / `config.py`.
-2. Implement Phase 1 Python sidecar stub under `sidecar/stub`.
-3. Smoke against local inference (`DEFAULT_BASE_URL=http://127.0.0.1:8000/v1`).
-4. Enable on this host’s Hermes: symlink or copy into `~/.hermes/plugins/zhc-fabric`.
-5. Only then start OTP port (Phase 3) behind the same API.
+**Done:** Phases 0–3 + 4a (plugin, Python stub, OTP sidecar, `love_eq`, metrics).
+
+**Operate:**
+
+1. Offline suite: `scripts/test.sh`
+2. Live smoke: `scripts/smoke.sh` (sidecar + `DEFAULT_BASE_URL`)
+3. Hermes: plugin enabled; `/fabric status` / `fabric_consensus`
+4. OTP optional: Docker image under `sidecar/otp` (same API)
+
+**Not next:** multi-node LAN fabric (deferred).
 
 ---
 
@@ -472,5 +482,6 @@ Marketing claims must stay honest:
 | 2026-07-16 | Sidecar + thin Hermes plugin, not core fork | Survives updates; portable to any install |
 | 2026-07-16 | HTTP JSON contract first, Erlang second | Ship value; OTP is replaceable backend |
 | 2026-07-16 | Default port 7733 | Avoid clash with 8000/8080/11434/9123 Hermes/llm |
+| 2026-07-16 | Cap at Phase 4a; drop multi-node WIP | Ship single-node fabric with real `love_eq`; distribution stays v2+ |
 | 2026-07-16 | Stdlib-only plugin client | No venv dependency fights |
 | 2026-07-16 | Fail open | Agent availability &gt; fabric availability |

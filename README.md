@@ -2,15 +2,15 @@
 
 **Sidecar multi-model consensus fabric for Hermes Agent** (any OpenAI-compatible stack).
 
-Hermes stays the agent shell. This repo ships a **thin plugin** + an **independent Python sidecar** (Erlang/OTP planned) that runs parallel propose / critique / vote. No Hermes core patches.
+Hermes stays the agent shell. This repo ships a **thin plugin** + an **independent sidecar** (Python stub or Erlang/OTP) that runs parallel propose / critique / vote. No Hermes core patches.
 
 | Layer | Tech | Role |
 |-------|------|------|
 | Plugin | Python (`register(ctx)`) | Tools, `/fabric`, skill |
-| Sidecar | `sidecar/stub/server.py` | HTTP `:7733` — fan-out + reduce |
+| Sidecar | `sidecar/stub` or `sidecar/otp` | HTTP `:7733` — fan-out + reduce |
 | Inference | Your endpoints | llama.cpp, Ollama, cloud |
 
-**Status:** MVP runnable (Phase 1 stub). OTP fabric is Phase 3 behind the same API.
+**Status:** Capped at Phase 4a — plugin + Python stub + OTP sidecar + real `love_eq` / metrics. Multi-node distribution deferred (v2+).
 
 ---
 
