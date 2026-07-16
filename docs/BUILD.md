@@ -109,7 +109,7 @@ In practice the **orchestration layer** becomes the ceiling:
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  User inference                                              │
-│  e.g. http://127.0.0.1:8000/v1  model=qwopus-3.6             │
+│  e.g. http://127.0.0.1:11434/v1  model=llama3.2             │
 │  Ollama, OpenRouter, multiple base_urls per vote             │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -227,8 +227,8 @@ Full detail: [SIDECAR-API.md](./SIDECAR-API.md).
   "endpoints": [
     {
       "name": "local-a",
-      "base_url": "http://127.0.0.1:8000/v1",
-      "model": "qwopus-3.6",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "model": "llama3.2",
       "api_key": ""
     }
   ],
@@ -246,8 +246,8 @@ If `endpoints` omitted, sidecar uses `DEFAULT_BASE_URL` / `DEFAULT_MODEL` from e
   "answer": "…",
   "policy": "majority",
   "votes": [
-    {"role": "proposer", "model": "qwopus-3.6", "text": "…"},
-    {"role": "critic", "model": "qwopus-3.6", "text": "…"}
+    {"role": "proposer", "model": "llama3.2", "text": "…"},
+    {"role": "critic", "model": "llama3.2", "text": "…"}
   ],
   "elapsed_ms": 4120,
   "error": null
@@ -275,33 +275,34 @@ Errors always JSON with `ok: false` and `error` string (reachable from plugin to
 - [x] Minimal HTTP server implementing `/health` + `/v1/consensus` (threads, stdlib-only)
 - [x] Parallel N completions with global semaphore lease (`MAX_INFLIGHT_COMPLETIONS`)
 - [x] `majority` via judge call with majority-pick fallback
-- [x] `docker-compose.yml` optional
+- [x] `docker-compose.yml` (later pointed at OTP image as primary)
 - [x] Plugin tools fully wired
 - [x] Skill markdown
-- [x] Offline integration test vs mock OpenAI server (`tests/test_api_contract.py`); live manual test pending local endpoint
+- [x] Offline integration test vs mock OpenAI server (`tests/test_api_contract.py`); live verified
 
 **Exit:** From Hermes chat, `fabric_consensus` returns multi-view answer against real local model.
 
 ### Phase 2 — Packaging
 
 - [x] `scripts/install-sidecar.sh` start|stop|status|logs
-- [x] README install for Docker and native
-- [x] GitHub-ready layout for `hermes plugins install owner/zhc-fabric`
+- [x] README install (Docker OTP primary; setup wizard/manual)
+- [x] GitHub-ready layout for `hermes plugins install RegardV/zhc-fabric`
 - [x] Version pin: plugin version ↔ API `/v1`
 - [x] Smoke test script `scripts/smoke.sh` (+ `scripts/test.sh` for the offline suite)
 
 **Exit:** Clean machine install documented and reproducible.
 
-### Phase 3 — Erlang/OTP fabric
+### Phase 3 — Erlang/OTP fabric (**product runtime**)
 
 - [x] OTP app (erlc-only build, zero hex deps): HTTP API preserved
 - [x] One process per in-flight consensus job (`simple_one_for_one` job supervisor)
 - [x] Actor processes for proposer/critic votes; policy/aggregation module
 - [x] Supervision tree; crash of one job does not kill node
-- [x] Replace Python stub behind same port/API (verified: `FABRIC_TEST_URL` contract test passes vs Docker OTP sidecar)
+- [x] Docker image is the **default** install path (`install-sidecar.sh` → compose); no host Erlang
+- [x] Python stub remains as `FABRIC_RUNTIME=python` / contract-test helper only
 - [x] Config for `max_inflight_completions` (lease gen_server)
 
-**Exit:** Same plugin, no tool schema changes; only sidecar binary/image changes.
+**Exit:** Same plugin, no tool schema changes; users run OTP via Docker.
 
 ### Phase 4a — Love Equation + metrics  ✅ shipped (cap)
 
@@ -343,10 +344,9 @@ zhc-fabric/
 │   └── smoke.sh
 ├── sidecar/
 │   ├── README.md
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── stub/                 # Phase 1 Python
-│   └── otp/                  # Phase 3 Erlang
+│   ├── docker-compose.yml    # primary: OTP image
+│   ├── otp/                  # Erlang/OTP product runtime
+│   └── stub/                 # Python fallback / tests only
 └── tests/
     ├── test_client.py
     └── test_api_contract.py
@@ -435,7 +435,7 @@ Marketing claims must stay honest:
 |------|------------|
 | Single GPU saturation | Leases + low default inflight |
 | Plugin API drift in Hermes | Stick to documented `ctx.register_*`; CI against recent hermes-agent |
-| Erlang adoption friction | Phase 1 Python stub; Docker image for OTP |
+| Erlang adoption friction | Docker image is the only supported OTP path; no host Erlang |
 | Users expect free quality gains | Skill text: when consensus helps vs wastes tokens |
 | Port conflicts | Configurable port; health clearly reports bind URL |
 
@@ -454,14 +454,14 @@ Marketing claims must stay honest:
 
 ## 15. Status at cap (Phase 4a)
 
-**Done:** Phases 0–3 + 4a (plugin, Python stub, OTP sidecar, `love_eq`, metrics).
+**Done:** Phases 0–3 + 4a — Hermes plugin + **Docker OTP primary** + Python fallback + `love_eq` + metrics + setup wizard/manual.
 
 **Operate:**
 
-1. Offline suite: `scripts/test.sh`
-2. Live smoke: `scripts/smoke.sh` (sidecar + `DEFAULT_BASE_URL`)
-3. Hermes: plugin enabled; `/fabric status` / `fabric_consensus`
-4. OTP optional: Docker image under `sidecar/otp` (same API)
+1. Docker running; `scripts/setup.sh` for model URL/key
+2. `scripts/install-sidecar.sh start` (OTP compose; no host Erlang)
+3. Offline suite: `scripts/test.sh`; live: `scripts/smoke.sh`
+4. Hermes: plugin enabled; `/fabric status` / `fabric_consensus`
 
 **Not next:** multi-node LAN fabric (deferred).
 
@@ -472,7 +472,7 @@ Marketing claims must stay honest:
 - Hermes plugins: `hermes-agent` docs → User Guide → Plugins; Developer Guide → Build a Plugin.
 - User plugin example on this host: `~/.hermes/plugins/fusion-memory/`.
 - Local inference notes: `~/.hermes/local_infrastructure.md` (Qwopus channels).
-- ZHC company workspace: `~/zhc-os` (Love Equation alignment, CTOs) — consumer, not dependency.
+- Optional consumer workspace: `~/zhc-os` (Love Equation alignment) — not a dependency of this repo.
 
 ---
 
@@ -481,8 +481,9 @@ Marketing claims must stay honest:
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-07-16 | Sidecar + thin Hermes plugin, not core fork | Survives updates; portable to any install |
-| 2026-07-16 | HTTP JSON contract first, Erlang second | Ship value; OTP is replaceable backend |
+| 2026-07-16 | HTTP JSON contract first, then OTP | Same plugin; swap runtime behind `/v1` |
 | 2026-07-16 | Default port 7733 | Avoid clash with 8000/8080/11434/9123 Hermes/llm |
 | 2026-07-16 | Cap at Phase 4a; drop multi-node WIP | Ship single-node fabric with real `love_eq`; distribution stays v2+ |
+| 2026-07-16 | Docker OTP as primary product path | Premise is actors/supervision; no host Erlang |
 | 2026-07-16 | Stdlib-only plugin client | No venv dependency fights |
 | 2026-07-16 | Fail open | Agent availability &gt; fabric availability |

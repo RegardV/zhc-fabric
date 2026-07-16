@@ -1,9 +1,12 @@
 name: zhc-fabric
 version: "0.1.0"
 description: >
-  Sidecar multi-model consensus fabric. Parallel propose/critique/vote via
-  an external service (default http://127.0.0.1:7733). Does not modify Hermes core.
+  Multi-view consensus fabric for Hermes: Erlang/OTP sidecar in Docker
+  (actors, supervision, leases) behind HTTP :7733. Tools fabric_status,
+  fabric_consensus, fabric_fanout. No Hermes core patches. Requires Docker;
+  no host Erlang install.
 author: zhc-fabric / RealAndWorks garage lab
+homepage: https://github.com/RegardV/zhc-fabric
 provides_tools:
   - fabric_status
   - fabric_consensus
@@ -12,5 +15,4 @@ provides_hooks:
   - on_session_start
 provides_commands:
   - fabric
-# No requires_env — install does not force URL/key prompts.
-# Configure via: scripts/setup.sh (--wizard or --manual), see after-install.md
+# Configure via scripts/setup.sh (--wizard or --manual); see after-install.md

@@ -1,14 +1,16 @@
 # zhc-fabric installed
 
+**Next:** configure a model URL, start the **Docker OTP** sidecar, smoke-test.
+
 ## What you need on the host
 
 | Required | Why |
 |----------|-----|
-| **Docker** | Runs the **Erlang/OTP** fabric image (the real product) |
+| **Docker** | Runs the **Erlang/OTP** fabric image (the product) |
 | Model endpoint | Any OpenAI-compatible `/v1/chat/completions` |
-| **Not required** | Installing Erlang, rebar, or hex on this machine |
+| **Not required** | Erlang, rebar, or hex on this machine |
 
-OTP/Erlang is **inside the Docker image**. If Docker is missing, install Docker first — you will not be asked to install Erlang.
+OTP lives **inside the image**. If something fails, install/start Docker — not system Erlang.
 
 ## Configure inference (wizard or manual)
 

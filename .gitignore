@@ -8,4 +8,8 @@ venv/
 .pytest_cache/
 .mypy_cache/
 sidecar/otp/_build/
+sidecar/otp/ebin/
 .atg/
+*.swp
+*~
+.DS_Store

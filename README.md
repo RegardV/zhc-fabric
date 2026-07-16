@@ -1,5 +1,10 @@
 # zhc-fabric
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Hermes plugin](https://img.shields.io/badge/Hermes-plugin-8A2BE2)](https://github.com/NousResearch/hermes-agent)
+[![Runtime](https://img.shields.io/badge/runtime-Erlang%2FOTP%20via%20Docker-red)](./sidecar/otp/README.md)
+[![API](https://img.shields.io/badge/API-v1-informational)](./docs/SIDECAR-API.md)
+
 **Sidecar multi-model consensus fabric for [Hermes Agent](https://github.com/NousResearch/hermes-agent).**
 
 Run a lightweight “committee” of parallel LLM views (propose / critique / vote), then reduce them to one answer—without forking Hermes or patching its core.
@@ -7,11 +12,22 @@ Run a lightweight “committee” of parallel LLM views (propose / critique / vo
 | Layer | What it is | Default |
 |-------|------------|---------|
 | **Hermes plugin** | Tools, `/fabric` command, skill | `~/.hermes/plugins/zhc-fabric` |
-| **Sidecar (primary)** | **Erlang/OTP** fabric in **Docker** | `http://127.0.0.1:7733` |
-| **Your models** | Any OpenAI-compatible `/v1/chat/completions` | Ollama, llama.cpp, OpenRouter, etc. |
+| **Sidecar** | **Erlang/OTP** fabric in **Docker** | `http://127.0.0.1:7733` |
+| **Your models** | Any OpenAI-compatible `/v1/chat/completions` | Ollama, llama.cpp, OpenRouter, cloud, … |
 
-**Repo:** https://github.com/RegardV/zhc-fabric  
-**License:** MIT · **Version:** 0.1.0 · **Status:** Phase 4a (single-host; multi-node deferred)
+**Repo:** https://github.com/RegardV/zhc-fabric · **License:** MIT · **v0.1.0** · RealAndWorks garage lab
+
+### Quick start
+
+```bash
+# Requires: Docker (running) + Hermes. Does NOT require host Erlang.
+hermes plugins install RegardV/zhc-fabric --enable
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh --wizard   # or --manual
+~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh start
+~/.hermes/plugins/zhc-fabric/scripts/smoke.sh
+hermes gateway restart   # if already running
+# chat: /fabric status
+```
 
 ---
 
@@ -540,7 +556,7 @@ Errors prefer HTTP 200 with `"ok": false` and an `error` string so clients alway
 - Sidecar binds **127.0.0.1** by default—local only.
 - Keep API keys in `sidecar.env` or Hermes `.env` with restrictive permissions (`chmod 600`). **Do not commit secrets.**
 - Model outputs are untrusted text when fed back into Hermes.
-- No auth on the fabric HTTP port in MVP—do not expose `:7733` to the internet without a reverse proxy and your own access control.
+- No auth on the fabric HTTP port—do not expose `:7733` to the internet without a reverse proxy and your own access control.
 - Plugin must not override Hermes built-in tools; only `fabric_*` names.
 
 ---
@@ -645,7 +661,8 @@ Contributions: keep the plugin **fail-open**, Docker OTP as default install path
 | [docs/PLUGIN-CONTRACT.md](./docs/PLUGIN-CONTRACT.md) | Hermes plugin surface |
 | [docs/SIDECAR-API.md](./docs/SIDECAR-API.md) | Full HTTP contract |
 | [docs/PORTABILITY.md](./docs/PORTABILITY.md) | Any-install rules |
-| [sidecar/otp/README.md](./sidecar/otp/README.md) | OTP build/run |
+| [sidecar/otp/README.md](./sidecar/otp/README.md) | OTP Docker runtime |
+| [CHANGELOG.md](./CHANGELOG.md) | Release notes |
 | [after-install.md](./after-install.md) | Shown after `hermes plugins install` |
 
 **License:** MIT — see [LICENSE](./LICENSE).

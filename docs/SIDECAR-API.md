@@ -34,7 +34,7 @@ Liveness and light readiness.
   "ok": true,
   "api": "v1",
   "version": "0.1.0",
-  "runtime": "stub-python | otp",
+  "runtime": "otp",
   "inflight": 0,
   "max_inflight": 2,
   "uptime_s": 123
@@ -77,8 +77,8 @@ Fan-out multiple completions, then reduce to one answer.
   "endpoints": [
     {
       "name": "optional-label",
-      "base_url": "http://127.0.0.1:8000/v1",
-      "model": "qwopus-3.6",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "model": "llama3.2",
       "api_key": ""
     }
   ],
@@ -111,7 +111,7 @@ Fan-out multiple completions, then reduce to one answer.
     {
       "id": "v0",
       "role": "proposer",
-      "model": "qwopus-3.6",
+      "model": "llama3.2",
       "endpoint": "local-a",
       "text": "…",
       "latency_ms": 1500,
@@ -120,7 +120,7 @@ Fan-out multiple completions, then reduce to one answer.
     {
       "id": "v1",
       "role": "critic",
-      "model": "qwopus-3.6",
+      "model": "llama3.2",
       "endpoint": "local-a",
       "text": "…",
       "latency_ms": 1600,
@@ -263,8 +263,8 @@ curl -sS http://127.0.0.1:7733/v1/consensus \
     "n": 3,
     "policy": "majority",
     "endpoints": [{
-      "base_url": "http://127.0.0.1:8000/v1",
-      "model": "qwopus-3.6",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "model": "llama3.2",
       "api_key": ""
     }]
   }' | jq .

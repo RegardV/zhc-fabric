@@ -123,19 +123,19 @@ cmd_start_otp() {
   fi
 
   # Export host-reachable URL for compose/container
+  local host_url="$DEFAULT_BASE_URL"
   local docker_url
-  docker_url="$(dockerize_base_url "$DEFAULT_BASE_URL")"
+  docker_url="$(dockerize_base_url "$host_url")"
   export DEFAULT_BASE_URL="$docker_url"
   export ZHC_FABRIC_DEFAULT_BASE_URL="$docker_url"
-  if [[ "$docker_url" != "${ZHC_FABRIC_DEFAULT_BASE_URL:-}" ]] || true; then
-    echo "  model URL for container: $docker_url"
+  if [[ "$docker_url" != "$host_url" ]]; then
+    echo "  note: model URL $host_url → $docker_url (container cannot use host loopback)"
   fi
 
   echo "building/starting Erlang OTP sidecar via Docker (Erlang is inside the image)..."
   compose up -d --build
-  # Wait for health
   local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     if health >/dev/null; then
       echo "zhc-fabric started (runtime=otp docker=$CONTAINER_NAME) http://${HOST}:${PORT}"
       echo "  DEFAULT_BASE_URL=$DEFAULT_BASE_URL"
@@ -147,6 +147,7 @@ cmd_start_otp() {
     sleep 0.5
   done
   echo "error: OTP container did not become healthy on :${PORT}" >&2
+  echo "  tip: docker logs $CONTAINER_NAME" >&2
   compose logs --tail 40 2>/dev/null || true
   return 1
 }
