@@ -1,0 +1,18 @@
+services:
+  zhc-fabric:
+    build:
+      context: ..
+      dockerfile: sidecar/Dockerfile
+    ports:
+      - "7733:7733"
+    environment:
+      FABRIC_HOST: "0.0.0.0"
+      FABRIC_PORT: "7733"
+      # host.docker.internal works on Docker Desktop; on Linux add extra_hosts
+      DEFAULT_BASE_URL: "${DEFAULT_BASE_URL:-http://host.docker.internal:8000/v1}"
+      DEFAULT_MODEL: "${DEFAULT_MODEL:-qwopus-3.6}"
+      DEFAULT_API_KEY: "${DEFAULT_API_KEY:-}"
+      MAX_INFLIGHT_COMPLETIONS: "${MAX_INFLIGHT_COMPLETIONS:-2}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
