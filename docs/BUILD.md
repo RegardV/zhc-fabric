@@ -44,7 +44,7 @@ In practice the **orchestration layer** becomes the ceiling:
 
 1. Concurrency leases so one GPU is not stampeded.
 2. Pluggable reduce policies: `majority`, `love_eq`, `unanimous_soft`.
-3. Docker Compose path for users without Erlang tooling.
+3. Docker Compose as **primary** OTP delivery (no host Erlang).
 4. `/fabric` slash command and `hermes fabric`-style CLI via plugin.
 5. Metrics endpoint for latency and actor counts.
 
@@ -97,12 +97,13 @@ In practice the **orchestration layer** becomes the ceiling:
 ┌──────────────────────────────────────────────────────────────┐
 │  Sidecar process (independent lifecycle)                     │
 │                                                              │
-│  MVP: Python asyncio stub  →  Production: Erlang/OTP actors  │
+│  Product: Erlang/OTP in Docker (actors, supervision, lease)  │
+│  Fallback: Python stub (tests / FABRIC_RUNTIME=python only)  │
 │                                                              │
 │  • Fan-out N completion requests                             │
 │  • Reduce by policy                                          │
 │  • Supervision / restart (OTP)                               │
-│  • Optional multi-node cluster                               │
+│  • Multi-node cluster deferred (v2+)                         │
 └───────────────────────────┬──────────────────────────────────┘
                             │ OpenAI-compatible chat.completions
                             ▼

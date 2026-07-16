@@ -32,8 +32,11 @@ Use the fabric tools for:
 
 `/fabric status` · `/fabric start` · `/fabric setup` · `/fabric url`
 
-First-time users need a model base URL (+ optional API key). Point them at
-`/fabric setup` or:
+First-time users need: **Docker** (OTP fabric image), plus a model base URL
+(+ optional API key). Point them at `/fabric setup` or:
 
 - `scripts/setup.sh --manual` — skip prompts; print files/vars to edit
 - `scripts/setup.sh --wizard` — interactive URL/model/key
+- `scripts/install-sidecar.sh start` — Docker OTP (not host Erlang)
+
+If the sidecar is down because Docker is missing, say so — do not invent votes.

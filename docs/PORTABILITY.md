@@ -12,7 +12,8 @@ Goal: **zhc-fabric** works on a stranger’s machine with a stock Hermes install
 | Hermes location | `$HERMES_HOME` or `~/.hermes` — never hardcode `/home/regard/...` |
 | Inference | User-supplied OpenAI-compatible `base_url` + `model` |
 | GPU | Optional; fabric runs even if models are remote |
-| Erlang tooling | Optional; Docker image provides OTP runtime |
+| **Docker** | **Required** for the product path (OTP fabric image) |
+| Erlang on host | **Not required** — image is `erlang:27-alpine`; OTP stays in the container |
 | Network | Localhost default; LAN optional |
 
 ---
@@ -25,8 +26,10 @@ Do **not** bake in:
 - `~/zhc-os` paths or InkyPyrus-only souls
 - Composio / Bitwarden keys from a personal `.env`
 - Requirement that Ollama is installed
-- Requirement that Docker is installed (offer native binary alternative)
+- Requirement that users install **Erlang/rebar/hex** on the host
 - Patches to `~/.hermes/hermes-agent/**`
+
+**Do** require Docker for the supported sidecar path (document clearly; fail with install-Docker guidance, not install-Erlang).
 
 ---
 
@@ -66,19 +69,17 @@ plugins:
 
 ## 5. Sidecar runtime matrix
 
-| Runtime | Pros | Cons |
-|---------|------|------|
-| Python stub | Fast to ship; easy debug | Not the Erlang story |
-| Docker OTP | Reproducible; no local Erlang | Needs Docker |
-| Native OTP release | No Docker | Packaging per arch |
-| systemd user unit | Survives login | Linux-centric |
+| Runtime | Role |
+|---------|------|
+| **Docker OTP** (`sidecar/otp`) | **Primary product** — actors, supervision, leases |
+| Python stub (`FABRIC_RUNTIME=python`) | Dev / offline tests only — not the install default |
 
-`scripts/install-sidecar.sh` should detect:
+`scripts/install-sidecar.sh` behavior:
 
-1. Docker available → compose up  
-2. Else native release in `sidecar/otp/_build/...` if present  
-3. Else Python stub if `python3` present  
-4. Else print clear install instructions and exit non-zero  
+1. Default `FABRIC_RUNTIME=otp`: require Docker → `docker compose up --build`  
+2. If Docker missing: exit non-zero with “install Docker; you do not need host Erlang”  
+3. Only if `FABRIC_RUNTIME=python`: run `sidecar/stub/server.py`  
+4. Rewrite `127.0.0.1` / `localhost` model URLs to `host.docker.internal` for the container
 
 ---
 
