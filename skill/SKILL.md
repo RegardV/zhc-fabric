@@ -33,4 +33,7 @@ Use the fabric tools for:
 `/fabric status` · `/fabric start` · `/fabric setup` · `/fabric url`
 
 First-time users need a model base URL (+ optional API key). Point them at
-`scripts/setup.sh` or `/fabric setup` if the sidecar reports missing endpoints.
+`/fabric setup` or:
+
+- `scripts/setup.sh --manual` — skip prompts; print files/vars to edit
+- `scripts/setup.sh --wizard` — interactive URL/model/key

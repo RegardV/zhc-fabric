@@ -25,20 +25,33 @@ ln -sfn /path/to/zhc-fabric ~/.hermes/plugins/zhc-fabric
 hermes plugins enable zhc-fabric
 ```
 
-During `hermes plugins install`, Hermes **prompts** for:
+Install does **not** force URL/key prompts. Configure either way:
 
-| Variable | What to enter |
-|----------|----------------|
-| `ZHC_FABRIC_DEFAULT_BASE_URL` | OpenAI-compatible base, e.g. `http://127.0.0.1:11434/v1` |
-| `ZHC_FABRIC_DEFAULT_MODEL` | Model id, e.g. `llama3.2` |
-| `ZHC_FABRIC_DEFAULT_API_KEY` | Optional — blank for most local servers |
-
-Saved to `~/.hermes/.env` (skip empty if you prefer to configure later).
-
-Then run the setup wizard (writes a local env file + starts the sidecar):
+**A — Manual (skip prompts)**
 
 ```bash
-~/.hermes/plugins/zhc-fabric/scripts/setup.sh
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh --manual
+# prints paths + drops a template; edit the API key/URL yourself, then:
+~/.hermes/plugins/zhc-fabric/scripts/install-sidecar.sh start
+```
+
+| File | Purpose |
+|------|---------|
+| `~/.hermes/zhc-fabric/sidecar.env` | Preferred (mode `600`) |
+| `sidecar.env.example` in the plugin | Template to copy |
+| `~/.hermes/.env` | Optional; `hermes config env-path` |
+
+```bash
+ZHC_FABRIC_DEFAULT_BASE_URL=http://127.0.0.1:11434/v1
+ZHC_FABRIC_DEFAULT_MODEL=llama3.2
+ZHC_FABRIC_DEFAULT_API_KEY=          # optional
+```
+
+**B — Interactive wizard**
+
+```bash
+~/.hermes/plugins/zhc-fabric/scripts/setup.sh --wizard
+# or: setup.sh  → choose 1) Interactive / 2) Manual
 ```
 
 Smoke + chat:
@@ -48,12 +61,13 @@ Smoke + chat:
 hermes gateway restart   # if gateway was already running
 ```
 
-In chat: `/fabric status` · ask for a committee · tool `fabric_consensus`.
+In chat: `/fabric status` · `/fabric setup` · `fabric_consensus`.
 
 ### Reconfigure
 
 ```bash
-~/.hermes/plugins/zhc-fabric/scripts/setup.sh
+setup.sh --manual          # show edit paths again
+setup.sh --wizard          # re-prompt
 # or edit:  ~/.hermes/zhc-fabric/sidecar.env
 ```
 

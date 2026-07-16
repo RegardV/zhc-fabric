@@ -169,13 +169,23 @@ def register(ctx: Any) -> None:
         if args[0] == "setup":
             script = PLUGIN_ROOT / "scripts" / "setup.sh"
             if not script.is_file():
-                return "setup.sh not found — run scripts/setup.sh from a terminal"
-            # Interactive TTY required; from chat we only print the path.
+                return "setup.sh not found"
+            state = state_dir()
+            env_file = state / "sidecar.env"
+            hermes_env = hermes_home() / ".env"
             return (
-                "Interactive setup needs a terminal:\n"
-                f"  bash {script}\n"
-                "It asks for base URL, model id, and optional API key, "
-                "then starts the sidecar."
+                "Configure inference (URL / model / optional API key) from a terminal:\n\n"
+                f"  Manual (skip prompts, shows what to edit):\n"
+                f"    bash {script} --manual\n\n"
+                f"  Interactive wizard:\n"
+                f"    bash {script} --wizard\n\n"
+                f"Files:\n"
+                f"  preferred: {env_file}\n"
+                f"  optional:  {hermes_env}  (hermes config env-path)\n"
+                f"  template:  {PLUGIN_ROOT / 'sidecar.env.example'}\n\n"
+                f"Vars: ZHC_FABRIC_DEFAULT_BASE_URL, "
+                f"ZHC_FABRIC_DEFAULT_MODEL, ZHC_FABRIC_DEFAULT_API_KEY\n"
+                f"Then: bash {PLUGIN_ROOT / 'scripts' / 'install-sidecar.sh'} start"
             )
         if args[0] == "url":
             return fabric_url()
