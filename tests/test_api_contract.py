@@ -25,6 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 STUB = ROOT / "sidecar" / "stub" / "server.py"
 
 MOCK_ANSWER = "The answer is 4."
+# Scorer requests are identified by this token in the scorer system prompt;
+# both sidecar implementations must include it (contract for love_eq rubric).
+SCORER_MARKER = "love-equation-scorer"
 
 
 def _free_port() -> int:
@@ -39,9 +42,14 @@ class _MockOpenAI(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length") or 0)
-        self.rfile.read(length)
+        raw = self.rfile.read(length).decode("utf-8", errors="replace")
+        if SCORER_MARKER in raw:
+            n = raw.count("### Vote v")
+            content = json.dumps([{"id": f"v{i}", "C": 9 - i, "D": 1} for i in range(n)])
+        else:
+            content = MOCK_ANSWER
         body = json.dumps(
-            {"choices": [{"message": {"role": "assistant", "content": MOCK_ANSWER}}]}
+            {"choices": [{"message": {"role": "assistant", "content": content}}]}
         ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -150,13 +158,25 @@ def check_error_paths(f: Fixture) -> None:
     assert r["ok"] is False and r["error"]
 
 
+def check_love_eq_rubric(f: Fixture) -> None:
+    r = _post(f.base, "/v1/consensus", {"prompt": "2+2?", "n": 2, "policy": "love_eq", "endpoints": f.endpoints})
+    assert r["ok"] is True, r
+    assert r["answer"] == MOCK_ANSWER
+    scores = r["scores"]
+    assert isinstance(scores, list) and len(scores) == 2, r
+    for s in scores:
+        assert s["id"].startswith("v")
+        assert abs(s["net"] - (s["C"] - s["D"])) < 0.01
+        assert s["note"] == "llm rubric", s
+
+
 def check_n_clamped(f: Fixture) -> None:
     r = _post(f.base, "/v1/consensus", {"prompt": "2+2?", "n": 999, "endpoints": f.endpoints})
     assert r["ok"] is True, r
     assert len(r["votes"]) <= 16
 
 
-CHECKS = [check_health, check_consensus_majority, check_fanout, check_error_paths, check_n_clamped]
+CHECKS = [check_health, check_consensus_majority, check_fanout, check_error_paths, check_love_eq_rubric, check_n_clamped]
 
 
 def test_api_contract():

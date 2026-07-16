@@ -31,6 +31,15 @@ DEFAULT_API_KEY = os.environ.get("DEFAULT_API_KEY", "")
 MAX_INFLIGHT = max(1, int(os.environ.get("MAX_INFLIGHT_COMPLETIONS", "2")))
 MAX_N = max(1, min(16, int(os.environ.get("FABRIC_MAX_N", "8"))))
 MAX_PROMPT_CHARS = int(os.environ.get("FABRIC_MAX_PROMPT_CHARS", "100000"))
+LOVE_EQ_RUBRIC = os.environ.get("FABRIC_LOVE_EQ_RUBRIC", "").strip()
+
+# "love-equation-scorer" token is contract: test mocks key on it.
+DEFAULT_LOVE_EQ_RUBRIC = (
+    "You are the love-equation-scorer for a multi-agent committee. "
+    "Score each vote: C = cooperation/creation value 0-10, "
+    "D = damage/deception risk 0-10. Reply with ONLY a JSON array like "
+    '[{"id":"v0","C":7,"D":1}] — no prose, no code fences.'
+)
 
 _inflight = 0
 _inflight_lock = threading.Lock()
@@ -338,8 +347,10 @@ def _judge_reduce(
     return text
 
 
-def _love_eq_scores(votes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Heuristic stub scores until a real rubric LLM pass is added."""
+def _love_eq_scores(
+    votes: list[dict[str, Any]], fallback_reason: str = "scorer unavailable"
+) -> list[dict[str, Any]]:
+    """Length-heuristic scores used only when the LLM rubric pass fails."""
     scores = []
     for v in votes:
         text = v.get("text") or ""
@@ -353,10 +364,59 @@ def _love_eq_scores(votes: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "C": round(c, 2),
                 "D": round(d, 2),
                 "net": round(c - d, 2),
-                "note": "heuristic stub; not a full Love Equation model pass",
+                "note": f"heuristic fallback: {fallback_reason}",
             }
         )
     return scores
+
+
+def _love_eq_llm_scores(
+    prompt: str,
+    votes: list[dict[str, Any]],
+    endpoints: list[dict[str, str]],
+    timeout_ms: int,
+    rubric: str | None,
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """One rubric completion scoring all votes. Returns (scores, reason-if-None)."""
+    parts = [f"### Vote {v['id']} ({v['role']})\n{v['text']}" for v in votes]
+    user = (
+        f"Original question:\n{prompt}\n\n"
+        f"Votes to score:\n\n" + "\n\n".join(parts)
+    )
+    messages = [
+        {"role": "system", "content": rubric or DEFAULT_LOVE_EQ_RUBRIC},
+        {"role": "user", "content": user},
+    ]
+    text, err, _ = _chat_completion(
+        endpoints[0], messages, 0.2, max(10.0, (timeout_ms / 1000.0) * 0.4)
+    )
+    if err or not text:
+        return None, err or "empty scorer reply"
+    t = text.strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", t).strip()
+    try:
+        raw = json.loads(t)
+    except json.JSONDecodeError:
+        return None, "scorer reply not JSON"
+    if not isinstance(raw, list):
+        return None, "scorer reply not a JSON array"
+    scores = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            return None, "scorer entry not an object"
+        try:
+            c = float(entry["C"])
+            d = float(entry["D"])
+            vid = str(entry["id"])
+        except (KeyError, TypeError, ValueError):
+            return None, "scorer entry missing id/C/D"
+        scores.append(
+            {"id": vid, "C": round(c, 2), "D": round(d, 2), "net": round(c - d, 2), "note": "llm rubric"}
+        )
+    if not scores:
+        return None, "scorer returned no entries"
+    return scores, ""
 
 
 def _run_job(body: dict[str, Any], reduce: bool) -> dict[str, Any]:
@@ -473,8 +533,11 @@ def _run_job(body: dict[str, Any], reduce: bool) -> dict[str, Any]:
     remaining_ms = max(5_000, timeout_ms - int((time.time() - t0) * 1000))
 
     if policy == "love_eq":
-        scores = _love_eq_scores(votes)
-        # pick highest net among good votes
+        rubric = body.get("rubric")
+        rubric = str(rubric).strip() if rubric else (LOVE_EQ_RUBRIC or None)
+        scores, why = _love_eq_llm_scores(prompt, good, endpoints, remaining_ms, rubric)
+        if scores is None:
+            scores = _love_eq_scores(votes, fallback_reason=why)
         by_id = {s["id"]: s for s in scores}
         best = max(good, key=lambda v: by_id.get(v["id"], {}).get("net", 0))
         answer = best["text"]

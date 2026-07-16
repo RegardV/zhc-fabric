@@ -304,9 +304,9 @@ Errors always JSON with `ok: false` and `error` string (reachable from plugin to
 
 ### Phase 4 — Distributed + Love Equation
 
-- [ ] Multi-node connect (LAN)
-- [ ] `love_eq` policy with configurable rubric
-- [ ] Optional metrics export
+- [ ] Multi-node connect (LAN) — needs a second machine to meet the exit criterion
+- [x] `love_eq` policy with configurable rubric (LLM scorer pass in both runtimes; request `rubric` > `FABRIC_LOVE_EQ_RUBRIC` > default; heuristic fallback on scorer failure)
+- [x] Optional metrics export (`/v1/metrics` JSON counters in both runtimes)
 - [ ] ZHC Kanban / joule hooks (out of band docs)
 
 **Exit:** Two machines run one fabric; consensus spans nodes.

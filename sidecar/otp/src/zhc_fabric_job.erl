@@ -57,8 +57,11 @@ run_job2(Body, Policy, Prompt, Endpoints, Reduce, T0) ->
     SystemPrompt = sys_of(Body),
     Votes = fanout(Prompt, N, Endpoints, SystemPrompt, Temperature, TimeoutMs),
     case Reduce of
-        false -> fanout_result(Votes, T0);
-        true -> reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs, T0)
+        false ->
+            fanout_result(Votes, T0);
+        true ->
+            reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs,
+                          rubric_of(Body), T0)
     end.
 
 validate(Body, Policy) ->
@@ -170,7 +173,7 @@ fanout_result(Votes, T0) ->
     #{ok => Ok, votes => Votes, elapsed_ms => Elapsed,
       error => case Ok of true -> null; false -> <<"all endpoints failed">> end}.
 
-reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs, T0) ->
+reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs, Rubric, T0) ->
     case zhc_fabric_policy:good(Votes) of
         [] ->
             Elapsed = since(T0),
@@ -184,7 +187,8 @@ reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs, T0) ->
         Good ->
             RemainingMs = max(5000, TimeoutMs - since(T0)),
             {Answer, Scores} =
-                apply_policy(Policy, Prompt, Votes, Good, Endpoints, RemainingMs),
+                apply_policy(Policy, Prompt, Votes, Good, Endpoints,
+                             RemainingMs, Rubric),
             Elapsed = since(T0),
             Ok = is_binary(Answer) andalso Answer =/= <<>>,
             zhc_fabric_lease:job_done(Ok, Elapsed),
@@ -196,8 +200,9 @@ reduce_result(Policy, Prompt, Votes, Endpoints, TimeoutMs, T0) ->
                        end}
     end.
 
-apply_policy(<<"love_eq">>, _Prompt, Votes, Good, _Endpoints, _RemainingMs) ->
-    Scores = zhc_fabric_policy:love_eq_scores(Votes),
+apply_policy(<<"love_eq">>, Prompt, Votes, Good, Endpoints, RemainingMs, Rubric) ->
+    Scores = zhc_fabric_policy:love_eq_scores(Prompt, Votes, Endpoints,
+                                              RemainingMs, Rubric),
     ById = maps:from_list([{maps:get(id, S), S} || S <- Scores]),
     Net = fun(V) -> maps:get(net, maps:get(maps:get(id, V), ById, #{}), 0) end,
     [G0 | Gs] = Good,
@@ -205,7 +210,8 @@ apply_policy(<<"love_eq">>, _Prompt, Votes, Good, _Endpoints, _RemainingMs) ->
                            case Net(V) > Net(B) of true -> V; false -> B end
                        end, G0, Gs),
     {maps:get(text, Best), Scores};
-apply_policy(<<"unanimous_soft">>, Prompt, Votes, Good, Endpoints, RemainingMs) ->
+apply_policy(<<"unanimous_soft">>, Prompt, Votes, Good, Endpoints, RemainingMs,
+             _Rubric) ->
     Norms = lists:usort([string:slice(zhc_fabric_policy:normalize(maps:get(text, V)),
                                       0, 120) || V <- Good]),
     case Norms of
@@ -226,7 +232,7 @@ apply_policy(<<"unanimous_soft">>, Prompt, Votes, Good, Endpoints, RemainingMs) 
                 end,
             {A, null}
     end;
-apply_policy(_Majority, Prompt, Votes, _Good, Endpoints, RemainingMs) ->
+apply_policy(_Majority, Prompt, Votes, _Good, Endpoints, RemainingMs, _Rubric) ->
     A = case zhc_fabric_policy:judge_reduce(Prompt, Votes, Endpoints, RemainingMs) of
             T when is_binary(T), T =/= <<>> -> T;
             _ -> zhc_fabric_policy:majority_pick(Votes)
@@ -274,6 +280,19 @@ temp_of(Body) ->
                 end
             end;
         _ -> 0.6
+    end.
+
+%% Rubric override order: request "rubric" > env FABRIC_LOVE_EQ_RUBRIC >
+%% built-in default (null here -> default inside zhc_fabric_policy).
+rubric_of(Body) ->
+    case maps:get(<<"rubric">>, Body, null) of
+        R when is_binary(R), R =/= <<>> ->
+            R;
+        _ ->
+            case zhc_fabric_config:love_eq_rubric() of
+                <<>> -> null;
+                R -> R
+            end
     end.
 
 sys_of(Body) ->

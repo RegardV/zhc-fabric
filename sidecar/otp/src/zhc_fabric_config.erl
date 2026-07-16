@@ -2,7 +2,7 @@
 -module(zhc_fabric_config).
 
 -export([host/0, port/0, default_base_url/0, default_model/0, default_api_key/0,
-         max_inflight/0, max_n/0, max_prompt_chars/0]).
+         max_inflight/0, max_n/0, max_prompt_chars/0, love_eq_rubric/0]).
 
 host() -> str_env("FABRIC_HOST", "127.0.0.1").
 
@@ -20,6 +20,8 @@ max_inflight() -> max(1, int_env("MAX_INFLIGHT_COMPLETIONS", 2)).
 max_n() -> max(1, min(16, int_env("FABRIC_MAX_N", 8))).
 
 max_prompt_chars() -> int_env("FABRIC_MAX_PROMPT_CHARS", 100000).
+
+love_eq_rubric() -> bin_env("FABRIC_LOVE_EQ_RUBRIC").
 
 %% internal
 
