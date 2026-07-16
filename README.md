@@ -614,4 +614,4 @@ Contributions: keep the plugin **fail-open**, **stdlib-only** client if possible
 
 **License:** MIT — see [LICENSE](./LICENSE).
 
-**Maintainers:** Zero-Human Company / garage lab · GitHub: [RegardV/zhc-fabric](https://github.com/RegardV/zhc-fabric)
+**Maintainers:** zhc-fabric · RealAndWorks garage lab · GitHub: [RegardV/zhc-fabric](https://github.com/RegardV/zhc-fabric)

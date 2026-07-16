@@ -41,7 +41,7 @@ version: "0.1.0"
 description: >
   Sidecar multi-model consensus fabric. Parallel propose/critique/vote via
   an external service (default http://127.0.0.1:7733). Does not modify Hermes core.
-author: Zero-Human Company
+author: zhc-fabric / RealAndWorks garage lab
 provides_tools:
   - fabric_status
   - fabric_consensus

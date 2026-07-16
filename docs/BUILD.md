@@ -125,7 +125,7 @@ Sidecar keeps Hermes thin and lets the fabric evolve without agent releases.
 
 ### 4.3 Relationship to local stack (example host)
 
-On a typical Zero-Human / garage host this coexists with:
+On a typical RealAndWorks garage lab host this coexists with:
 
 | Component | Role relative to fabric |
 |-----------|-------------------------|

@@ -1,6 +1,6 @@
 # Portability — Sidecar Any Hermes Install
 
-Goal: **zhc-fabric** works on a stranger’s machine with a stock Hermes install, without assuming Zero-Human garage paths or a forked agent.
+Goal: **zhc-fabric** works on a stranger’s machine with a stock Hermes install, without assuming RealAndWorks garage lab paths or a forked agent.
 
 ---
 
