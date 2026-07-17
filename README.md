@@ -51,7 +51,8 @@ hermes gateway restart   # if already running
 16. [Limitations & roadmap](#limitations--roadmap)
 17. [Uninstall / remove](#uninstall--remove)
 18. [Development](#development)
-19. [Docs & license](#docs--license)
+19. [Build log](#build-log)
+20. [Docs & license](#docs--license)
 
 ---
 
@@ -650,6 +651,317 @@ zhc-fabric/
 ```
 
 Contributions: keep the plugin **fail-open**, Docker OTP as default install path, and preserve the `/v1` JSON contract.
+
+---
+
+## Build log
+
+A technical account of how v0.1.0 was actually built: the shape of the thing, the
+walls we hit, and what the fix was. Design rationale lives in
+[docs/BUILD.md](./docs/BUILD.md); this is the construction record.
+
+### The premise
+
+The bet was narrow and worth stating up front, because it constrained every later
+decision: **inference speed is a solved problem, orchestration isn't.** llama.cpp,
+Ollama and vLLM already win the tokens/sec fight. What hurts is the layer above —
+"ask three minds, let them argue, give me one answer" — where a Python agent
+process ends up running short-lived LLM calls through thread pools, coupling
+committee reliability to chat reliability.
+
+So: put the committee in Erlang/OTP (actors, supervision, leases), hide it behind a
+boring HTTP contract, and keep Hermes a thin client that fails open. Two rules fell
+out of that and never moved:
+
+1. **No Hermes fork.** Plugin + HTTP only, so `hermes update` can't break us.
+2. **The contract is the product boundary.** Runtime swaps behind `/v1`; the plugin
+   never notices.
+
+### Phases, as built
+
+| Phase | Shipped | Notes |
+|-------|---------|-------|
+| **0 — Scaffold + contract** | Plugin skeleton, docs, `plugin.yaml`, healthcheck | Contract written *before* either runtime existed |
+| **1 — Python stub sidecar** | `/health`, `/v1/consensus`, `/v1/fanout`, `/v1/metrics`; majority policy; global lease | Stdlib only. Existed to prove the API, not to ship |
+| **2 — Packaging** | `install-sidecar.sh`, smoke + offline suites, compose | "Clean machine" install made reproducible |
+| **3 — Erlang/OTP fabric** | OTP 27 app, supervision tree, monitor-based lease, job-per-process | **The actual product.** Same contract, zero plugin changes |
+| **4a — `love_eq` + metrics** | Real LLM rubric scorer in both runtimes, JSON counters | Live-verified against a real model |
+| **4b+ — multi-node** | ✗ **Deliberately dropped** | See [Cap decision](#the-cap-decision) |
+
+Writing the contract first (Phase 0) is what made Phase 3 boring. The OTP runtime
+landed behind the *same* `/v1` API the Python stub had been serving for two phases,
+and the plugin needed no tool-schema change at all.
+
+### What broke, and what fixed it
+
+#### 1. The lease didn't actually lease (Python stub)
+
+**Symptom:** `MAX_INFLIGHT_COMPLETIONS` was enforced per job, not globally. Three
+concurrent consensus jobs at `n=3` each happily opened nine outbound completions and
+stampeded a single-consumer GPU — the exact failure the lease existed to prevent.
+
+**Cause:** the original `_acquire_slots` reasoned about slots inside job scope. Job
+isolation was doing the opposite of what a *global* cap needs.
+
+**Fix:** one module-level semaphore, acquired per **outbound completion** rather
+than per job:
+
+```python
+# Global lease: every outbound completion must hold a slot, across all jobs.
+_slots = threading.Semaphore(MAX_INFLIGHT)
+```
+
+**Lesson that carried into OTP:** the lease has to live at the resource, not at the
+caller. There's one GPU; there should be exactly one thing counting.
+
+#### 2. A semaphore is the wrong primitive when workers can crash (OTP)
+
+**Symptom:** porting the semaphore idea to Erlang reintroduced a classic leak. A
+vote worker that dies mid-completion (model timeout, malformed response, kill)
+never runs its release path. Slots bleed away until the fabric wedges at zero
+capacity — and it stays wedged, because nothing is left to notice.
+
+**Fix:** make the lease a `gen_server` that **monitors every holder**. The VM
+reports the death; the lease reclaims the slot. No cleanup code in the worker, no
+try/after discipline to forget:
+
+```erlang
+handle_info({'DOWN', _MRef, process, Pid, _Reason}, #{holders := H} = S) ->
+    case maps:is_key(Pid, H) of
+        true -> {noreply, grant_next(remove_holder(Pid, S))};
+        false -> {noreply, S}
+    end;
+```
+
+This is the whole argument for OTP in one function. The Python version can only
+approximate it with wrappers that a crash can skip.
+
+#### 3. The acquire-timeout race
+
+**Symptom:** `gen_server:call(?MODULE, acquire, TimeoutMs)` can time out on the
+caller side at the same instant the lease grants it a slot. The caller walks away
+believing it got nothing; the lease believes a slot is held. Slot lost, permanently.
+
+**Fix:** timing out isn't a passive event — the caller must explicitly retract:
+
+```erlang
+acquire(TimeoutMs) ->
+    try gen_server:call(?MODULE, acquire, TimeoutMs)
+    catch
+        exit:{timeout, _} ->
+            %% May have been granted concurrently with our timeout; cancel
+            %% removes us from the queue or releases the racing grant.
+            gen_server:cast(?MODULE, {cancel, self()}),
+            busy
+    end.
+```
+
+`{cancel, Pid}` handles both worlds — still queued (drop from queue) or already
+granted (release it) — because the caller genuinely cannot know which it is.
+
+#### 4. Two runtimes, one contract, guaranteed drift
+
+**Symptom:** with a Python stub *and* an OTP app both serving `/v1`, every change
+had two homes. They were already diverging on error shapes and `n` clamping.
+
+**Fix:** refused to write two test suites. One contract suite points at whatever is
+listening:
+
+```bash
+./scripts/test.sh                                   # mock OpenAI, no GPU
+FABRIC_TEST_URL=http://127.0.0.1:7733 ./scripts/test.sh   # the real OTP container
+```
+
+Same checks (`check_health`, `check_consensus_majority`, `check_fanout`,
+`check_error_paths`, `check_love_eq_rubric`, `check_n_clamped`) run against both.
+Anywhere the assertions couldn't be shared was a place the runtimes had drifted —
+the suite doubled as a drift detector.
+
+We even made a prompt an assertion: the `love_eq` scorer system prompt must contain
+the token `love-equation-scorer` unless the caller overrides the rubric, so both
+runtimes are provably invoking the same contract.
+
+#### 5. `127.0.0.1` means something different inside a container
+
+**Symptom:** the highest-frequency install failure, and an unhelpful one. Users
+configure `http://127.0.0.1:11434/v1` — correct on the host, correct in every
+Ollama doc. Inside the container it points at *the container*, so the fabric
+reports connection refused against a model that is plainly running.
+
+**Fix:** stop expecting users to think in namespaces. Rewrite at start, and give the
+container a route home:
+
+```bash
+# Models on the host: container cannot use 127.0.0.1 (that is the container itself).
+dockerize_base_url() {
+  local u="$1"
+  u="${u//127.0.0.1/host.docker.internal}"
+  u="${u//localhost/host.docker.internal}"
+  printf '%s' "$u"
+}
+```
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+The user keeps writing the host URL that matches their own reality. Translation is
+our job, and the rewrite is announced at start so it isn't spooky.
+
+#### 6. Erlang was the right runtime and the wrong ask
+
+**Symptom:** the honest install story was briefly "install Erlang, install rebar3,
+build the app." For a plugin whose pitch is *lower orchestration friction*, that's
+self-defeating — most people would bounce there and never see the fabric.
+
+**Fix:** make Docker the **only** supported OTP path, and keep OTP entirely inside
+the image:
+
+```dockerfile
+FROM erlang:27-alpine
+COPY src/ src/
+RUN mkdir -p ebin \
+ && erlc -o ebin src/*.erl \
+ && cp src/zhc_fabric.app.src ebin/zhc_fabric.app
+```
+
+Stdlib only — `inets` httpd, `httpc`, `json`. **Zero hex dependencies, no rebar3,
+`erlc` alone.** That was a deliberate constraint, not an accident: no dependency
+resolver in the image means no dependency resolver in anyone's install failure.
+
+The rule we wrote down and held to:
+
+> If install "hits a wall," it should be **install Docker**, never **install Erlang**.
+
+Erlang remains the reason the thing works. It just stopped being the user's problem.
+
+#### 7. The installer interrogated people who hadn't decided yet
+
+**Symptom:** `requires_env` in `plugin.yaml` made `hermes plugins install` demand a
+base URL, model and API key up front — before the user had read a line of docs or
+knew what a "model endpoint" meant here. Worst possible moment to ask.
+
+**Fix:** dropped `requires_env` entirely. Install just installs. Configuration is a
+separate, explicit step with two doors:
+
+```bash
+scripts/setup.sh --wizard   # interactive prompts
+scripts/setup.sh --manual   # prints exact files + vars, touches nothing
+```
+
+`--manual` exists because scripted/config-managed users find wizards hostile: it
+tells you what to edit and gets out of the way.
+
+#### 8. The Hermes plugin contract fights pytest
+
+**Symptom:** collection errors on `python3 -m pytest tests/` — cryptic
+`import_module('__init__')` failures.
+
+**Cause:** Hermes requires `register()` in a root `__init__.py`, which makes the repo
+root a package, which makes pytest's rootdir collection import `__init__` as a
+top-level module. Two valid conventions, one directory, no winner.
+
+**Fix:** not worth restructuring the repo over. Pin the invocation and document the
+why at the point of pain:
+
+```bash
+# Repo root has __init__.py (Hermes plugin contract), which breaks pytest
+# collection from the root — so run from tests/.
+cd "$(dirname "$0")/../tests"
+exec pytest -q --import-mode=importlib "$@" .
+```
+
+`./scripts/test.sh` is the supported entry point. Running bare `pytest` from the
+root still fails, by design and with a comment explaining it.
+
+#### 9. `love_eq` was a stub wearing a policy's name
+
+**Symptom:** through Phases 1–3, `love_eq` was a length heuristic. It had a real
+name in the API and no real scoring behind it — a documentation lie waiting to be
+found.
+
+**Fix (Phase 4a):** one real LLM rubric pass per job — temperature 0.2, lease-gated
+like any other completion, strict JSON `[{id, C, D}]`, winner by `net = C − D`. The
+rubric is configurable: request `rubric` field > `FABRIC_LOVE_EQ_RUBRIC` env >
+built-in default.
+
+**The constraint that shaped it:** a scorer failure must never fail the job. A
+committee that already produced good votes shouldn't 500 because the judge choked
+on JSON:
+
+```erlang
+%% One LLM rubric pass scoring every vote; falls back to the length
+%% heuristic on any failure. Never fails the job.
+love_eq_scores(Prompt, Votes, Endpoints, TimeoutMs, Rubric) ->
+    case llm_scores(Prompt, Votes, Endpoints, TimeoutMs, Rubric) of
+        {ok, Scores} -> Scores;
+        {error, Reason} ->
+            Note = <<"heuristic fallback: ", Reason/binary>>,
+            [heuristic_score(V, Note) || V <- Votes]
+    end.
+```
+
+The degraded path is **labelled**, not silent — results carry
+`heuristic fallback: <reason>`, so you can always tell a real rubric score from a
+fallback. Same fail-open instinct as the plugin, one layer down.
+
+Live-verified on a real model: the critic vote won at net 8.0.
+
+#### 10. Docs drifted the moment the default changed
+
+**Symptom:** flipping Docker from *optional* to *primary* (`fd69650`) updated the
+README. `docs/BUILD.md`, `docs/PORTABILITY.md` and `skill/SKILL.md` kept telling
+people Docker was optional and Python was the default — actively steering users onto
+the fallback path.
+
+**Fix:** a dedicated sweep (`ea7b6d6`) to make secondary docs match the primary
+decision. Noting it here because it's the failure mode that keeps recurring: a
+default that changes in one file and stays changed in exactly one file. The install
+path is documented in more places than it is implemented.
+
+### The cap decision
+
+Multi-node Erlang distribution across a LAN was in the plan from day one. It's the
+most interesting thing left, it's the natural payoff of choosing OTP, and it is
+**not in this release.**
+
+Cutting it was the right call. Single-node with a *real* `love_eq` beats multi-node
+with a stubbed one. The distribution work was half-built, unbenchmarked, and would
+have held the shippable single-node fabric hostage to a feature nobody had asked
+for yet.
+
+> **Cap decision (2026-07-16):** Project is complete at Phase 4a. Do not start
+> multi-node distribution until deliberately reopened.
+
+Written into [docs/BUILD.md](./docs/BUILD.md) so it's a decision, not a lapse.
+
+### What we'd tell the next implementer
+
+| Principle | Where it paid off |
+|-----------|-------------------|
+| **Contract before runtime** | OTP replaced Python behind `/v1` with zero plugin changes |
+| **One test suite, many runtimes** | `FABRIC_TEST_URL` caught every drift between stub and OTP |
+| **Fail open, everywhere** | `register()` never raises; a dead sidecar never breaks chat; a dead scorer never fails a job |
+| **Put the lease at the resource** | One GPU → exactly one thing counting, monitor-backed |
+| **Make the failure "install Docker"** | The runtime's requirements are the maintainer's problem, not the user's |
+| **Label degraded output** | `heuristic fallback: <reason>` beats a silently worse answer |
+| **Cap the scope in writing** | A dropped feature in a decision log isn't debt; unwritten it's a lie |
+
+### Verification status (honest)
+
+| Check | Status |
+|-------|--------|
+| Offline contract suite (`./scripts/test.sh`) | ✅ 3 passed, mock OpenAI, no GPU needed |
+| Same suite vs OTP container (`FABRIC_TEST_URL`) | ✅ Passes — identical contract |
+| `love_eq` real rubric, live model | ✅ Verified on one host (critic won, net 8.0) |
+| Fail-open with sidecar down | ✅ Tools return `success: false`; Hermes chats normally |
+| Multi-host / multi-OS install | ⚠️ Not verified — `host.docker.internal` is the likeliest first break |
+| Sustained load / stampede benchmarks | ⚠️ Not measured — lease is correct-by-construction, not yet proven under load |
+
+The suite is a **contract** suite, not a coverage suite. It pins the API shape and
+the runtime parity — those are the things that would silently break. It does not
+claim broad line coverage of either runtime.
 
 ---
 
